@@ -1,0 +1,63 @@
+# 远程LM Studio配置
+# 用于Tailscale网络中的远程LM Studio服务
+
+# 数据源配置（保持不变）
+data_sources:
+  obsidian_vault_path: "/Users/fengzhe/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识仓库"
+  pdf_paths: []
+
+# 嵌入模型配置
+embedding:
+  model_name: "BAAI/bge-small-zh-v1.5"
+  model_type: "sentence-transformers"
+  device: "cpu"
+  normalize_embeddings: true
+  batch_size: 32
+
+# LLM配置 - 远程LM Studio
+llm:
+  local:
+    enabled: true
+    base_url: "http://100.109.51.62:1234"  # Tailscale IP:端口，没有/v1后缀
+    model: "qwen/qwen3.5-9b"  # 根据实际模型名称调整
+    temperature: 0.1
+    max_tokens: 1024
+  
+  cloud:
+    enabled: false
+
+# 其他配置保持不变...
+vector_store:
+  type: "chroma"
+  persist_directory: "./data/embeddings/chroma"
+  collection_name: "obsidian_notes"
+  
+  retrieval:
+    top_k: 10
+    score_threshold: 0.5
+
+# 检索增强配置
+retrieval_enhancement:
+  hybrid_search:
+    vector_weight: 0.7
+    keyword_weight: 0.3
+  
+  query_expansion:
+    enabled: true
+    synonyms: true
+    technical_terms: true
+  
+  reranking:
+    enabled: false
+
+# 系统性能
+performance:
+  cache_embeddings: true
+  parallel_processing: true
+  max_workers: 4
+
+# 日志配置
+logging:
+  level: "INFO"
+  file: "./logs/rag_system.log"
+  console: true
