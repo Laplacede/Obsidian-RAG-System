@@ -17,6 +17,13 @@ Obsidian RAG System - 主程序入口
 3. 启动CLI：uv run python main.py cli
 4. 查看配置：uv run python main.py config
 5. 查看帮助：uv run python main.py --help
+
+职责说明：
+- 输入：接收命令行参数，作为整个系统的入口。
+- 处理：把 init、cli、config、version 等子命令转发给 src/cli.py 中的实际实现。
+- 输出：执行初始化、启动交互式问答、显示配置或版本信息。
+- 依赖文件：config/model_config.yaml 作为主要配置来源；src/cli.py 提供交互式 CLI 逻辑。
+- 下游传递：命令行参数会被转成 CLI 需要的配置，再继续驱动提取、分块、检索和生成流程。
 """
 
 import sys

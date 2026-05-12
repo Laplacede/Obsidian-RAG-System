@@ -41,8 +41,10 @@ uv run python main.py config
 编辑 `config/model_config.yaml` 文件：
 
 1. **Obsidian仓库路径**：设置你的Obsidian笔记库路径
-2. **本地模型配置**：确保 `base_url` 指向正确的LM Studio地址
+2. **本地模型配置**：确保 `base_url` 指向正确的 LM Studio 地址（不带 `/api/v1/chat` 后缀）
 3. **嵌入模型**：使用BAAI/bge-small-zh-v1.5进行中文优化
+
+当前本地生成器使用的是 LM Studio 的旧接口 `/api/v1/chat`，请求体为 `input + system_prompt`。
 
 ## 🐛 故障排除
 
@@ -50,6 +52,11 @@ uv run python main.py config
 ```bash
 # 检查LM Studio是否运行
 curl http://100.109.51.62:1234/v1/models
+
+# 验证旧接口是否返回答案
+curl -X POST http://100.109.51.62:1234/api/v1/chat \
+	-H 'Content-Type: application/json' \
+	-d '{"model":"qwen/qwen3.5-9b","input":"请只回复 ok","system_prompt":"你是一个助手。"}'
 ```
 
 ### 2. CLI启动错误

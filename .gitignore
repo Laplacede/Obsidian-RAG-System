@@ -9,7 +9,12 @@ wheels/
 # Virtual environments
 .venv
 
+# 隐私配置文件（API密钥、服务器地址等）
+config/model_config.yaml
+
+# 数据目录
 data/
-config/
 chroma_db/
+
+# 系统文件
 .DS_Store  

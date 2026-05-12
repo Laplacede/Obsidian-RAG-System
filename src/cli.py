@@ -2,6 +2,13 @@
 """
 Obsidian RAG系统 - 增强版交互式CLI界面
 支持从配置文件加载模型设置，支持本地LM Studio模型
+
+职责说明：
+- 输入：读取命令行参数和配置文件，主要依赖 config/model_config.yaml。
+- 处理：组织系统初始化、检索、重排序和生成的交互流程，并维护命令历史。
+- 输出：向终端展示配置、检索结果、问答结果和系统状态。
+- 依赖文件：config/model_config.yaml、用户历史文件 ~/.obsidian_rag_history，以及 src/ 下的检索和生成模块。
+- 下游传递：CLI 会把用户问题交给检索器，再把检索结果交给生成器，形成完整 RAG 问答链路。
 """
 
 import os
@@ -114,7 +121,7 @@ class ObsidianRAGCLI:
             
             # 导入必要的模块
             from retriever import HybridRetriever
-            from rag_generator import MockGenerator, LocalLMStudioGenerator, RAGSystem
+            from rag_generator import create_generator, RAGSystem
             
             # 创建检索器
             print("正在加载向量数据库和分块数据...")
@@ -134,20 +141,34 @@ class ObsidianRAGCLI:
             if self.config["model_type"] == "local":
                 # 使用配置文件中的本地模型设置
                 local_config = self.model_config.get("local", {})
-                base_url = local_config.get("base_url", "http://localhost:1234")
+                base_url = local_config.get("base_url")
                 model_name = local_config.get("model", "local-model")
+
+                if not base_url:
+                    raise ValueError("本地模型配置缺少 base_url，请在 config/model_config.yaml 中设置")
                 
                 print(f"使用本地LM Studio: {base_url}, 模型: {model_name}")
-                self.generator = LocalLMStudioGenerator(
+                self.generator = create_generator(
+                    "local",
                     base_url=base_url,
                     model_name=model_name
                 )
             elif self.config["model_type"] == "openai":
-                # TODO: 实现OpenAI生成器
-                print("警告: OpenAI模式暂未实现，使用模拟模式")
-                self.generator = MockGenerator()
+                # 使用OpenAI API配置
+                openai_config = self.model_config.get("openai", {})
+                api_key = openai_config.get("api_key")
+                if not api_key:
+                    print("警告: OpenAI API密钥未配置，使用模拟模式")
+                    self.generator = create_generator("mock")
+                else:
+                    model_name = openai_config.get("model", "gpt-3.5-turbo")
+                    self.generator = create_generator(
+                        "openai",
+                        api_key=api_key,
+                        model_name=model_name
+                    )
             else:  # mock模式
-                self.generator = MockGenerator()
+                self.generator = create_generator("mock")
             
             # 创建RAG系统
             self.rag_system = RAGSystem(self.retriever, self.generator)
@@ -211,6 +232,7 @@ class ObsidianRAGCLI:
                 print(f"  base_url: {local_config.get('base_url', '未设置')}")
                 print(f"  model: {local_config.get('model', '未设置')}")
                 print(f"  temperature: {local_config.get('temperature', '未设置')}")
+                print(f"  timeout: {local_config.get('timeout', '未设置')}")
                 print(f"  max_tokens: {local_config.get('max_tokens', '未设置')}")
         print()
     

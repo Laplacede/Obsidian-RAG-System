@@ -2,6 +2,13 @@
 """
 Obsidian笔记数据提取器
 从Obsidian仓库提取笔记内容、元数据和链接关系
+
+职责说明：
+- 输入：遍历 vault_path 下的所有 Markdown 笔记（*.md），读取原始内容。
+- 处理：解析 YAML frontmatter、wikilinks 和标签；清洗正文，去掉 frontmatter、wikilinks 以及用于标签提取的代码块/行内代码。
+- 输出：生成结构化笔记对象，包含 content、metadata、tags、wikilinks、字数统计和文件信息。
+- 下游传递：将提取结果保存为 data/processed/obsidian_notes.json，供分块器使用；同时生成 data/processed/vault_structure.json 和 data/processed/statistics.json 供分析和统计查看。
+- 依赖：使用 yaml 解析 frontmatter，使用 re 做模式匹配，使用 json 写出结构化结果。
 """
 
 import os
@@ -28,7 +35,15 @@ class ObsidianExtractor:
         # 正则表达式模式
         self.yaml_pattern = re.compile(r'^---\n(.*?)\n---', re.DOTALL)
         self.wikilink_pattern = re.compile(r'\[\[([^\]|]+)(?:\|([^\]]+))?\]\]')
-        self.tag_pattern = re.compile(r'#([\w\-]+)')
+        self.tag_pattern = re.compile(r'(?<![\w/])#([\w\-]+)')
+        # 支持 2 个及以上反引号的围栏代码块（如 `` ... `` 与 ``` ... ```）
+        self.code_block_pattern = re.compile(r'(?ms)^(`{2,})[^\n]*\n.*?^\1\s*$')
+        self.inline_code_pattern = re.compile(r'`[^`]*`')
+        # 常见代码预处理指令/关键字，避免被误识别为Obsidian标签
+        self.noise_tags = {
+            'include', 'define', 'ifdef', 'ifndef', 'endif', 'pragma',
+            'region', 'endregion'
+        }
         
     def extract_all_notes(self) -> List[Dict]:
         """
@@ -179,18 +194,36 @@ class ObsidianExtractor:
         if 'tags' in metadata:
             tags_list = metadata['tags']
             if isinstance(tags_list, list):
-                tags.update(tags_list)
+                tags.update(self._normalize_tags(tags_list))
             elif isinstance(tags_list, str):
-                tags.update([tag.strip() for tag in tags_list.split(',')])
+                tags.update(self._normalize_tags(tags_list.split(',')))
         
-        # 从内容中提取#标签
-        content_tags = self.tag_pattern.findall(content)
-        tags.update(content_tags)
+        # 从正文中提取#标签（忽略代码块和行内代码）
+        non_code_content = self._strip_code_sections(content)
+        content_tags = self.tag_pattern.findall(non_code_content)
+        tags.update(self._normalize_tags(content_tags))
         
         # 从文件名推断标签（如果包含C++等关键词）
         # 这部分在外部处理
         
-        return list(tags)
+        return sorted(tags)
+
+    def _strip_code_sections(self, content: str) -> str:
+        """移除代码块和行内代码，避免误提取代码里的#指令。"""
+        no_blocks = self.code_block_pattern.sub('', content)
+        return self.inline_code_pattern.sub('', no_blocks)
+
+    def _normalize_tags(self, tags: List[str]) -> List[str]:
+        """规范化标签：去重、去前缀#、过滤噪声和空值。"""
+        normalized = []
+        for tag in tags:
+            if tag is None:
+                continue
+            text = str(tag).strip().lstrip('#').lower()
+            if not text or text in self.noise_tags:
+                continue
+            normalized.append(text)
+        return normalized
     
     def clean_content(self, content: str) -> str:
         """

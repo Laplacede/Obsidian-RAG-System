@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
 语义分块器
-针对技术文档优化的层次化分块策略
+针对技术文档优化的层次化分块策略。
+
+职责说明：
+- 输入：读取提取器输出的结构化笔记数据，通常来自 data/processed/obsidian_notes.json。
+- 处理：按标题、段落、列表、引用和代码块等语义边界切分文本，并生成 small/medium/large 三种粒度的分块。
+- 输出：将分块结果写入 data/chunks/small_chunks.json、data/chunks/medium_chunks.json、data/chunks/large_chunks.json。
+- 统计：同时生成 data/chunks/chunking_statistics.json，记录各类分块数量、词数和平均块大小。
+- 下游传递：分块结果会被检索器和向量库构建流程继续使用。
 """
 
 import re

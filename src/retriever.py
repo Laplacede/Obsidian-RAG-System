@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
 检索器
-实现混合搜索（向量+关键词）功能
+实现混合搜索（向量+关键词）功能。
+
+职责说明：
+- 输入：接收用户查询，并读取 data/chunks/*.json 与 data/vector_store/ 中的向量索引。
+- 处理：同时执行向量检索、关键词检索、查询扩展和可选重排序，得到更贴近问题的候选块。
+- 输出：返回 SearchResult 列表，包含 chunk_id、text、metadata、score 和 source。
+- 下游传递：检索结果会传给 reranker 进一步排序，也会传给 rag_generator 作为提示词上下文。
+- 依赖文件：data/chunks/ 下的分块 JSON、data/vector_store/ 下的 Chroma 持久化索引、以及嵌入模型 BAAI/bge-small-zh-v1.5。
 """
 
 import os
