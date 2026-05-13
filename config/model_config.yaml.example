@@ -11,6 +11,20 @@ data_sources:
     # - "/path/to/textbook1.pdf"
     # - "/path/to/textbook2.pdf"
 
+# RAG系统行为配置 (新增)
+rag:
+  # 模式选择
+  mode: "flexible"  # 'strict' 或 'flexible'
+  # strict: 严格模式，只基于知识库回答，信息不足时明确说明
+  # flexible: 灵活模式，优先使用知识库，但可补充先验知识（推荐）
+  
+  # 置信度阈值配置
+  confidence:
+    # 文档质量标准
+    high_quality_min_docs: 3      # 高质量文档最少数量
+    high_quality_min_score: 0.7   # 高质量文档最低相关性分数
+    high_quality_confidence: 0.95 # 高质量答案的置信度
+
 # 嵌入模型配置
 embedding:
   model_name: "BAAI/bge-small-zh-v1.5"

@@ -38,16 +38,21 @@ class LLMGenerator:
     不依赖具体配置，通过构造函数参数接收所有必要信息。
     """
     
-    def __init__(self, model_name: str = "default", context_window: int = 4096):
+    def __init__(self, model_name: str = "default", context_window: int = 4096, 
+                 rag_mode: str = "flexible"):
         """
         初始化LLM生成器
         
         Args:
             model_name: 模型名称
             context_window: 上下文窗口大小
+            rag_mode: RAG模式 ('strict'|'flexible')
+                - strict: 仅基于知识库回答，信息不足时说明
+                - flexible: 优先使用知识库，不足时可补充先验知识
         """
         self.model_name = model_name
         self.context_window = context_window
+        self.rag_mode = rag_mode
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
                 max_tokens: int = 500) -> GenerationResult:
@@ -107,18 +112,45 @@ class LLMGenerator:
         Returns:
             完整的提示词文本
         """
-        prompt = f"""基于以下上下文，请回答用户的问题。请确保：
-1. 答案准确、完整
-2. 引用相关文档作为依据
-3. 如果上下文信息不足，请说明
+        if self.rag_mode == "strict":
+            # 严格模式：仅基于知识库回答
+            prompt = f"""你是一个基于知识库的问答助手。请基于以下提供的上下文回答用户的问题。
+
+重要规则：
+1. 仅基于提供的文档内容回答
+2. 如果上下文中没有相关信息，请明确说"知识库中没有相关信息"
+3. 所有答案都应该引用相关的文档
 4. 使用中文回答
 
-上下文：
+上下文文档：
 {context}
 
 用户问题：{query}
 
-请根据上下文提供详细的回答，并在回答中引用相关文档（如[文档1]、[文档2]等）："""
+请根据上下文提供详细的回答，并引用相关文档（如[文档1]、[文档2]等）："""
+        else:  # flexible mode (default)
+            # 灵活模式：优先知识库，可补充先验知识
+            prompt = f"""你是一个智能助手，拥有两个知识来源：
+
+【来源1】知识库文档（优先使用）：
+{context}
+
+【来源2】你的先验知识：在知识库信息不足时可以补充
+
+回答用户问题时，请遵循以下规则：
+1. 首先尽量使用知识库文档回答（这是最权威的来源）
+2. 如果知识库文档完整覆盖了问题，只基于文档回答
+3. 如果知识库文档信息不足，可以补充你的先验知识来完善答案
+4. 请明确标记答案中各部分的来源：
+   - [知识库] = 直接来自提供的文档
+   - [补充] = 你的先验知识补充
+   - [混合] = 综合知识库和先验知识
+5. 使用中文回答
+6. 力求答案准确、完整、有用
+
+用户问题：{query}
+
+请提供详细的回答。如果使用了文档中的信息，请引用相关文档（如[文档1]、[文档2]等）："""
         
         return prompt
     
@@ -164,3 +196,43 @@ class LLMGenerator:
                 continue
         
         return citations
+    
+    def calculate_confidence(self, context: List[Dict[str, Any]], 
+                            has_knowledge_base_answer: bool = True) -> float:
+        """
+        基于检索质量计算置信度
+        
+        Args:
+            context: 检索到的上下文
+            has_knowledge_base_answer: 答案是否基于知识库
+            
+        Returns:
+            置信度分数 (0-1)
+            
+        说明：
+            - 5个以上高分文档（分数>0.7）：0.95 (极高信心)
+            - 3-5个中等文档（分数>0.5）：0.85 (高信心)
+            - 1-3个相关文档：0.7 (中等信心)
+            - 没有相关文档但用先验知识：0.5 (低信心)
+            - 没有相关文档且无法补充：0.2 (极低信心)
+        """
+        if not context:
+            # 没有检索到任何文档
+            return 0.5 if has_knowledge_base_answer else 0.2
+        
+        # 计算文档数量和平均分数
+        doc_count = len(context)
+        avg_score = sum(chunk.get('score', 0.0) for chunk in context) / doc_count if doc_count > 0 else 0.0
+        high_quality_docs = sum(1 for chunk in context if chunk.get('score', 0.0) > 0.7)
+        
+        # 基于数量和质量计算置信度
+        if doc_count >= 5 and high_quality_docs >= 3 and avg_score > 0.7:
+            return 0.95
+        elif doc_count >= 3 and avg_score > 0.6:
+            return 0.85
+        elif doc_count >= 1 and avg_score > 0.5:
+            return 0.70
+        elif doc_count >= 1:
+            return 0.60
+        else:
+            return 0.50

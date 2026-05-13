@@ -48,8 +48,9 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
     Args:
         generator_type: 生成器类型 ('mock', 'local', 'openai')
         **kwargs: 传递给生成器的参数
-            - 对于 'local': base_url, model_name
-            - 对于 'openai': api_key, model_name
+            - 对于 'local': base_url, model_name, rag_mode
+            - 对于 'openai': api_key, model_name, rag_mode
+            - rag_mode: 'strict'(仅知识库) | 'flexible'(知识库优先+补充)
             
     Returns:
         LLMGenerator 实例
@@ -57,8 +58,10 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
     Raises:
         ValueError: 如果生成器类型不支持
     """
+    rag_mode = kwargs.get('rag_mode', 'flexible')  # 默认灵活模式
+    
     if generator_type == "mock":
-        return MockGenerator()
+        return MockGenerator(rag_mode=rag_mode)
     
     elif generator_type == "local":
         # 优先使用显式传参，其次回退到 config/model_config.yaml 中的本地配置
@@ -71,7 +74,8 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
         
         return LocalLMStudioGenerator(
             base_url=base_url,
-            model_name=kwargs.get('model_name', local_config.get('model', 'local-model'))
+            model_name=kwargs.get('model_name', local_config.get('model', 'local-model')),
+            rag_mode=rag_mode
         )
     
     elif generator_type == "openai":
@@ -81,7 +85,8 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
         
         return OpenAIGenerator(
             api_key=api_key,
-            model_name=kwargs.get('model_name', 'gpt-3.5-turbo')
+            model_name=kwargs.get('model_name', 'gpt-3.5-turbo'),
+            rag_mode=rag_mode
         )
     
     else:
@@ -165,6 +170,7 @@ class RAGSystem:
                 "citations": generation_result.citations,
                 "confidence": generation_result.confidence,
                 "model": generation_result.model,
+                "rag_mode": self.generator.rag_mode,  # 显示使用的RAG模式
                 "context_count": len(context),
                 "context_preview": [
                     {

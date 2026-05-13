@@ -39,7 +39,8 @@ class ObsidianRAGCLI:
             "use_hybrid": True,
             "use_reranking": True,
             "context_count": 5,
-            "model_type": "mock"  # mock, local, openai
+            "model_type": "mock",  # mock, local, openai
+            "rag_mode": "flexible"  # strict, flexible
         }
         
         # 从配置文件加载模型设置
@@ -75,16 +76,24 @@ class ObsidianRAGCLI:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
             
+            # 提取RAG配置
+            rag_config = config.get("rag", {})
+            self.config["rag_mode"] = rag_config.get("mode", "flexible")
+            
             # 提取模型配置
             model_config = {
                 "local": config.get("llm", {}).get("local", {}),
-                "cloud": config.get("llm", {}).get("cloud", {})
+                "cloud": config.get("llm", {}).get("cloud", {}),
+                "rag": rag_config
             }
             
             # 如果配置中启用了本地模型，自动设置model_type为local
             if model_config["local"].get("enabled", False):
                 self.config["model_type"] = "local"
                 print(f"从配置文件加载本地模型设置: {model_config['local'].get('model', 'unknown')}")
+            
+            # 打印RAG模式信息
+            print(f"RAG模式: {self.config['rag_mode']}")
             
             return model_config
             
@@ -136,7 +145,7 @@ class ObsidianRAGCLI:
             self.retriever.build_keyword_index(self.config["chunk_type"])
             
             # 根据model_type创建生成器
-            print(f"正在初始化LLM生成器 ({self.config['model_type']}模式)...")
+            print(f"正在初始化LLM生成器 ({self.config['model_type']}模式, RAG模式: {self.config['rag_mode']})...")
             
             if self.config["model_type"] == "local":
                 # 使用配置文件中的本地模型设置
@@ -151,7 +160,8 @@ class ObsidianRAGCLI:
                 self.generator = create_generator(
                     "local",
                     base_url=base_url,
-                    model_name=model_name
+                    model_name=model_name,
+                    rag_mode=self.config["rag_mode"]
                 )
             elif self.config["model_type"] == "openai":
                 # 使用OpenAI API配置
@@ -159,16 +169,17 @@ class ObsidianRAGCLI:
                 api_key = openai_config.get("api_key")
                 if not api_key:
                     print("警告: OpenAI API密钥未配置，使用模拟模式")
-                    self.generator = create_generator("mock")
+                    self.generator = create_generator("mock", rag_mode=self.config["rag_mode"])
                 else:
                     model_name = openai_config.get("model", "gpt-3.5-turbo")
                     self.generator = create_generator(
                         "openai",
                         api_key=api_key,
-                        model_name=model_name
+                        model_name=model_name,
+                        rag_mode=self.config["rag_mode"]
                     )
             else:  # mock模式
-                self.generator = create_generator("mock")
+                self.generator = create_generator("mock", rag_mode=self.config["rag_mode"])
             
             # 创建RAG系统
             self.rag_system = RAGSystem(self.retriever, self.generator)
@@ -176,7 +187,7 @@ class ObsidianRAGCLI:
             print("系统初始化完成！")
             print(f"配置: 分块类型={self.config['chunk_type']}, 混合搜索={'启用' if self.config['use_hybrid'] else '禁用'}, "
                   f"重排序={'启用' if self.config['use_reranking'] else '禁用'}, 上下文数量={self.config['context_count']}, "
-                  f"模型类型={self.config['model_type']}")
+                  f"模型类型={self.config['model_type']}, RAG模式={self.config['rag_mode']}")
             print("输入 'help' 查看可用命令")
             print()
             
@@ -322,7 +333,11 @@ class ObsidianRAGCLI:
                 return
             
             # 显示答案
-            print(f"\n答案 ({result['model']}, 置信度: {result['confidence']:.2f}):")
+            confidence = result['confidence']
+            confidence_label = self._get_confidence_label(confidence)
+            rag_mode_label = "严格模式（仅知识库）" if result.get('rag_mode') == 'strict' else "灵活模式（知识库优先+补充）"
+            
+            print(f"\n答案 (模型: {result['model']}, RAG模式: {rag_mode_label}, 置信度: {confidence:.2f} {confidence_label}):")
             print("-" * 40)
             print(result["answer"])
             
@@ -335,6 +350,9 @@ class ObsidianRAGCLI:
                     if i <= 2:  # 只显示前2个的预览
                         print(f"   预览: {citation['text_preview']}")
             
+            # 显示上下文统计
+            print(f"\n检索统计: {result['context_count']} 个文档")
+            
             # 保存到历史记录
             self.save_history(query)
             
@@ -342,6 +360,19 @@ class ObsidianRAGCLI:
             print(f"查询失败: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _get_confidence_label(self, confidence: float) -> str:
+        """根据置信度返回标签"""
+        if confidence >= 0.9:
+            return "🟢 极高"
+        elif confidence >= 0.75:
+            return "🟢 高"
+        elif confidence >= 0.6:
+            return "🟡 中等"
+        elif confidence >= 0.4:
+            return "🟠 低"
+        else:
+            return "🔴 极低"
     
     def execute_search(self, query: str):
         """仅执行搜索（不生成答案）"""
@@ -471,6 +502,8 @@ def main():
                        default="config/model_config.yaml")
     parser.add_argument("--model-type", choices=["mock", "local", "openai"], 
                        help="模型类型，覆盖配置文件设置")
+    parser.add_argument("--rag-mode", choices=["strict", "flexible"],
+                       help="RAG模式：strict（仅知识库）或 flexible（知识库优先+补充），覆盖配置文件设置")
     
     args = parser.parse_args()
     
@@ -480,6 +513,10 @@ def main():
     # 如果命令行指定了model-type，覆盖配置
     if args.model_type:
         cli.config["model_type"] = args.model_type
+    
+    # 如果命令行指定了rag_mode，覆盖配置
+    if args.rag_mode:
+        cli.config["rag_mode"] = args.rag_mode
     
     cli.run()
 
