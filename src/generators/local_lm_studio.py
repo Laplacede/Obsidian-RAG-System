@@ -27,15 +27,17 @@ class LocalLMStudioGenerator(LLMGenerator):
     """
     
     def __init__(self, base_url: str, 
-                 model_name: str = "local-model"):
+                 model_name: str = "local-model",
+                 rag_mode: str = "flexible"):
         """
         初始化本地LM Studio生成器
         
         Args:
             base_url: LM Studio API 地址，不包含 /api/v1/chat 后缀
             model_name: 模型名称
+            rag_mode: RAG模式 ('strict'|'flexible')
         """
-        super().__init__(model_name)
+        super().__init__(model_name, rag_mode=rag_mode)
         if not base_url:
             raise ValueError("base_url 不能为空，必须由上层配置传入")
         self.base_url = base_url
@@ -121,10 +123,13 @@ class LocalLMStudioGenerator(LLMGenerator):
                 # 从答案中提取引用
                 citations = self.extract_citations(answer, context)
                 
+                # 使用动态置信度，基于检索质量计算
+                confidence = self.calculate_confidence(context, has_knowledge_base_answer=True)
+                
                 return GenerationResult(
                     answer=answer,
                     citations=citations,
-                    confidence=0.8,  # 默认置信度
+                    confidence=confidence,
                     model=self.model_name
                 )
             else:

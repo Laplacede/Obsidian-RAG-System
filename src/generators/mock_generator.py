@@ -20,6 +20,10 @@ class MockGenerator(LLMGenerator):
     生成虚拟的回答，不实际调用任何LLM。
     """
     
+    def __init__(self, model_name: str = "mock-model", rag_mode: str = "flexible"):
+        """初始化模拟生成器"""
+        super().__init__(model_name, rag_mode=rag_mode)
+    
     def generate(self, query: str, context: List[Dict[str, Any]], 
                 max_tokens: int = 500) -> GenerationResult:
         """
@@ -37,7 +41,7 @@ class MockGenerator(LLMGenerator):
         formatted_context = self.format_context(context)
         
         # 创建模拟回答
-        answer = f"这是基于查询'{query}'的模拟回答。\n\n"
+        answer = f"这是基于查询'{query}'的模拟回答（{self.rag_mode}模式）。\n\n"
         answer += f"我检索到了{len(context)}个相关文档。\n\n"
         
         # 添加一些模拟的引用（前两个文档）
@@ -60,9 +64,12 @@ class MockGenerator(LLMGenerator):
                 "text_preview": chunk.get('text', '')[:100] + "..."
             })
         
+        # 使用动态置信度
+        confidence = self.calculate_confidence(context, has_knowledge_base_answer=True)
+        
         return GenerationResult(
             answer=answer,
             citations=citations,
-            confidence=0.7,
+            confidence=confidence,
             model="mock-model"
         )

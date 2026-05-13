@@ -23,15 +23,17 @@ class OpenAIGenerator(LLMGenerator):
     通过OpenAI API调用GPT等模型来生成答案。
     """
     
-    def __init__(self, api_key: str, model_name: str = "gpt-3.5-turbo"):
+    def __init__(self, api_key: str, model_name: str = "gpt-3.5-turbo", 
+                 rag_mode: str = "flexible"):
         """
         初始化OpenAI生成器
         
         Args:
             api_key: OpenAI API密钥
             model_name: 模型名称 (默认: gpt-3.5-turbo)
+            rag_mode: RAG模式 ('strict'|'flexible')
         """
-        super().__init__(model_name)
+        super().__init__(model_name, rag_mode=rag_mode)
         self.api_key = api_key
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
@@ -78,10 +80,13 @@ class OpenAIGenerator(LLMGenerator):
             # 从答案中提取引用
             citations = self.extract_citations(answer, context)
             
+            # 使用动态置信度
+            confidence = self.calculate_confidence(context, has_knowledge_base_answer=True)
+            
             return GenerationResult(
                 answer=answer,
                 citations=citations,
-                confidence=0.8,
+                confidence=confidence,
                 model=self.model_name
             )
                 
