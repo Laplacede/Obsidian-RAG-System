@@ -54,6 +54,43 @@ ssh -L 1234:localhost:1234 user@remote-server
 base_url: "http://localhost:1234"
 ```
 
+## 🔥 火山引擎配置
+
+### 获取 API 密钥
+
+1. 访问 [火山引擎控制台](https://console.volcengine.com/)
+2. 创建账户或登录
+3. 进入 **API Key 管理** 获取 Access Key 和 Secret Key
+4. 在 `config/model_config.yaml` 中配置：
+
+```yaml
+llm:
+  volcengine:
+    enabled: true
+    api_key: "YOUR_VOLCENGINE_API_KEY"  # ← 替换为你的 API 密钥
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "doubao-pro-4k"  # 豆包模型
+    temperature: 0.1
+    timeout: 60
+    max_tokens: 1024
+```
+
+### 支持的模型
+
+火山引擎提供多个豆包模型版本：
+- `doubao-pro-4k` - 标准版（推荐）
+- `doubao-pro-32k` - 长上下文版本
+- `doubao-lite-4k` - 轻量版
+- `doubao-lite-32k` - 轻量长上下文版本
+
+### 切换到火山引擎
+
+在 CLI 中使用以下命令一键切换：
+
+```bash
+model volcengine
+```
+
 ## 🧪 测试连接
 
 运行以下命令测试是否能连接到 LM Studio：

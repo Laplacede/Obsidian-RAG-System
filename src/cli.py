@@ -80,10 +80,14 @@ class ObsidianRAGCLI:
             rag_config = config.get("rag", {})
             self.config["rag_mode"] = rag_config.get("mode", "flexible")
             
+            llm_config = config.get("llm", {})
+
             # 提取模型配置
             model_config = {
-                "local": config.get("llm", {}).get("local", {}),
-                "cloud": config.get("llm", {}).get("cloud", {}),
+                "local": llm_config.get("local", {}),
+                "volcengine": llm_config.get("volcengine", {}),
+                "cloud": llm_config.get("cloud", {}),
+                "openai": llm_config.get("cloud", {}),
                 "rag": rag_config
             }
             
@@ -152,16 +156,38 @@ class ObsidianRAGCLI:
                 local_config = self.model_config.get("local", {})
                 base_url = local_config.get("base_url")
                 model_name = local_config.get("model", "local-model")
+                timeout = local_config.get("timeout", 1200)
 
                 if not base_url:
                     raise ValueError("本地模型配置缺少 base_url，请在 config/model_config.yaml 中设置")
                 
-                print(f"使用本地LM Studio: {base_url}, 模型: {model_name}")
+                print(f"使用本地LM Studio: {base_url}, 模型: {model_name}, 超时: {timeout}秒")
                 self.generator = create_generator(
                     "local",
                     base_url=base_url,
                     model_name=model_name,
-                    rag_mode=self.config["rag_mode"]
+                    rag_mode=self.config["rag_mode"],
+                    timeout=timeout
+                )
+            elif self.config["model_type"] == "volcengine":
+                # 使用火山引擎配置
+                ve_config = self.model_config.get("volcengine", {})
+                api_key = ve_config.get("api_key")
+                if not api_key:
+                    raise ValueError("火山引擎 API 密钥未配置，请在 config/model_config.yaml 中设置")
+                
+                model_name = ve_config.get("model", "doubao-pro-4k")
+                base_url = ve_config.get("base_url", "https://ark.cn-beijing.volces.com/api/v3")
+                timeout = ve_config.get("timeout", 60)
+                
+                print(f"使用火山引擎: {base_url}, 模型: {model_name}, 超时: {timeout}秒")
+                self.generator = create_generator(
+                    "volcengine",
+                    api_key=api_key,
+                    model_name=model_name,
+                    base_url=base_url,
+                    rag_mode=self.config["rag_mode"],
+                    timeout=timeout
                 )
             elif self.config["model_type"] == "openai":
                 # 使用OpenAI API配置
@@ -205,6 +231,8 @@ class ObsidianRAGCLI:
 可用命令:
   query <问题>           - 查询问题
   search <关键词>        - 仅搜索（不生成答案）
+  model                  - 显示当前模型和支持的模型列表
+  model <类型>           - 切换模型 (local, volcengine, openai, mock)
   config                 - 显示当前配置
   config set <选项> <值> - 修改配置
   history                - 显示查询历史
@@ -217,11 +245,13 @@ class ObsidianRAGCLI:
   use_hybrid     - 混合搜索: true, false
   use_reranking  - 重排序: true, false
   context_count  - 上下文数量: 1-10
-  model_type     - 模型类型: mock, local, openai
+  model_type     - 模型类型: mock, local, volcengine, openai
 
 示例:
   query C++类与对象是什么？
   search 计算机组成原理
+  model local              # 切换到本地LM Studio
+  model volcengine         # 切换到火山引擎
   config set context_count 3
   config set use_reranking false
   config set model_type local
@@ -245,6 +275,16 @@ class ObsidianRAGCLI:
                 print(f"  temperature: {local_config.get('temperature', '未设置')}")
                 print(f"  timeout: {local_config.get('timeout', '未设置')}")
                 print(f"  max_tokens: {local_config.get('max_tokens', '未设置')}")
+        elif self.config["model_type"] == "volcengine":
+            ve_config = self.model_config.get("volcengine", {})
+            if ve_config:
+                print(f"\n火山引擎模型配置:")
+                print(f"  model: {ve_config.get('model', '未设置')}")
+                print(f"  api_key: {'已配置' if ve_config.get('api_key') else '未配置'}")
+                print(f"  base_url: {ve_config.get('base_url', '未设置')}")
+                print(f"  temperature: {ve_config.get('temperature', '未设置')}")
+                print(f"  timeout: {ve_config.get('timeout', '未设置')}")
+                print(f"  max_tokens: {ve_config.get('max_tokens', '未设置')}")
         print()
     
     def update_config(self, option: str, value: str):
@@ -279,8 +319,8 @@ class ObsidianRAGCLI:
                 return False
             new_value = value
         elif option == "model_type":
-            if value not in ["mock", "local", "openai"]:
-                print(f"错误: 模型类型应为 mock/local/openai")
+            if value not in ["mock", "local", "openai", "volcengine"]:
+                print(f"错误: 模型类型应为 mock/local/openai/volcengine")
                 return False
             new_value = value
         else:
@@ -309,6 +349,112 @@ class ObsidianRAGCLI:
             print("请退出后重新启动程序")
         
         return True
+    
+    def show_models(self):
+        """显示当前模型和支持的模型列表"""
+        print("\n可用模型:")
+        print("-" * 60)
+        
+        models = {
+            "mock": {
+                "description": "模拟生成器（用于测试）",
+                "enabled": True
+            },
+            "local": {
+                "description": "本地 LM Studio (http://100.109.51.62:1234)",
+                "model": self.model_config.get("local", {}).get("model", "未设置"),
+                "enabled": self.model_config.get("local", {}).get("enabled", False)
+            },
+            "volcengine": {
+                "description": "火山引擎 - 豆包模型",
+                "model": self.model_config.get("volcengine", {}).get("model", "未设置"),
+                "api_key_configured": bool(self.model_config.get("volcengine", {}).get("api_key")),
+                "enabled": self.model_config.get("volcengine", {}).get("enabled", False)
+            },
+            "openai": {
+                "description": "OpenAI GPT 系列",
+                "model": self.model_config.get("cloud", {}).get("model", "未设置"),
+                "enabled": self.model_config.get("cloud", {}).get("enabled", False)
+            }
+        }
+        
+        current_model = self.config["model_type"]
+        
+        for model_type, info in models.items():
+            prefix = "➤ " if model_type == current_model else "  "
+            status = "✓" if info.get("enabled") else "✗"
+            print(f"{prefix}[{status}] {model_type.upper()}: {info['description']}")
+            
+            if model_type == "local" and info.get("model"):
+                print(f"       模型: {info['model']}")
+            elif model_type == "volcengine":
+                print(f"       模型: {info['model']}")
+                api_status = "已配置" if info['api_key_configured'] else "未配置"
+                print(f"       API密钥: {api_status}")
+            elif model_type == "openai":
+                print(f"       模型: {info['model']}")
+        
+        print(f"\n当前模型: {current_model}")
+        print("使用 'model <类型>' 命令切换模型，例如: model volcengine\n")
+    
+    def switch_model(self, model_type: str):
+        """切换模型"""
+        model_type = model_type.lower().strip()
+        
+        if model_type not in ["mock", "local", "volcengine", "openai"]:
+            print(f"错误: 不支持的模型类型 '{model_type}'")
+            print("支持的类型有: mock, local, volcengine, openai")
+            return False
+        
+        # 检查模型配置
+        if model_type == "local":
+            local_config = self.model_config.get("local", {})
+            if not local_config.get("enabled"):
+                print("错误: 本地模型未启用，请先在 config/model_config.yaml 中启用")
+                return False
+            if not local_config.get("base_url"):
+                print("错误: 本地模型未配置 base_url")
+                return False
+        
+        elif model_type == "volcengine":
+            ve_config = self.model_config.get("volcengine", {})
+            if not ve_config.get("enabled"):
+                print("警告: 火山引擎模型未启用，正在启用...")
+            if not ve_config.get("api_key"):
+                print("错误: 火山引擎 API 密钥未配置")
+                print("请在 config/model_config.yaml 中的 llm.volcengine.api_key 设置你的 API 密钥")
+                return False
+        
+        elif model_type == "openai":
+            cloud_config = self.model_config.get("cloud", {})
+            if not cloud_config.get("enabled"):
+                print("警告: OpenAI 模型未启用，正在启用...")
+            if not cloud_config.get("api_key"):
+                print("错误: OpenAI API 密钥未配置")
+                print("请在 config/model_config.yaml 中的 llm.cloud.api_key 设置你的 API 密钥")
+                return False
+        
+        # 更新配置
+        old_model = self.config["model_type"]
+        self.config["model_type"] = model_type
+        
+        print(f"\n✓ 模型已切换: {old_model} → {model_type}")
+        print(f"正在重新初始化 RAG 系统...")
+        
+        try:
+            # 重新初始化系统使用新模型
+            if not self.initialize_system():
+                print("错误: 初始化新模型失败")
+                self.config["model_type"] = old_model  # 恢复原值
+                return False
+            
+            print("✓ RAG 系统已更新到新模型\n")
+            return True
+            
+        except Exception as e:
+            print(f"错误: 切换模型失败 - {e}")
+            self.config["model_type"] = old_model  # 恢复原值
+            return False
     
     def execute_query(self, query: str):
         """执行查询"""
@@ -468,6 +614,14 @@ class ObsidianRAGCLI:
                 
                 elif command == "history":
                     self.show_history()
+                
+                elif command == "model":
+                    if args:
+                        # model <type>
+                        self.switch_model(args)
+                    else:
+                        # 显示模型信息
+                        self.show_models()
                 
                 elif command == "query":
                     if not args:

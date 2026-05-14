@@ -80,6 +80,16 @@ llm:
     timeout: 500
     max_tokens: 1024
   
+  # 火山引擎模式 (豆包模型)
+  volcengine:
+    enabled: false
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    api_key: "YOUR_VOLCENGINE_API_KEY"  # 替换为实际的火山引擎 API 密钥
+    model: "doubao-pro-4k"  # 豆包模型名称
+    temperature: 0.1
+    timeout: 60
+    max_tokens: 1024
+  
   # 云API模式
   cloud:
     enabled: false

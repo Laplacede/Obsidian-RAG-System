@@ -22,7 +22,8 @@ from generators import (
     LLMGenerator,
     MockGenerator,
     LocalLMStudioGenerator,
-    OpenAIGenerator
+    OpenAIGenerator,
+    VolcengineGenerator
 )
 
 
@@ -46,10 +47,11 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
     生成器工厂函数
     
     Args:
-        generator_type: 生成器类型 ('mock', 'local', 'openai')
+        generator_type: 生成器类型 ('mock', 'local', 'openai', 'volcengine')
         **kwargs: 传递给生成器的参数
-            - 对于 'local': base_url, model_name, rag_mode
+            - 对于 'local': base_url, model_name, rag_mode, timeout
             - 对于 'openai': api_key, model_name, rag_mode
+            - 对于 'volcengine': api_key, model_name, rag_mode, base_url, timeout
             - rag_mode: 'strict'(仅知识库) | 'flexible'(知识库优先+补充)
             
     Returns:
@@ -72,10 +74,13 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
         if not base_url:
             raise ValueError("本地生成器缺少 base_url，请先在 config/model_config.yaml 中配置")
         
+        timeout = kwargs.get('timeout') or local_config.get('timeout', 1200)
+        
         return LocalLMStudioGenerator(
             base_url=base_url,
             model_name=kwargs.get('model_name', local_config.get('model', 'local-model')),
-            rag_mode=rag_mode
+            rag_mode=rag_mode,
+            timeout=timeout
         )
     
     elif generator_type == "openai":
@@ -89,8 +94,28 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
             rag_mode=rag_mode
         )
     
+    elif generator_type == "volcengine":
+        # 优先使用显式传参，其次回退到 config/model_config.yaml 中的火山引擎配置
+        config = _load_config()
+        ve_config = config.get("llm", {}).get("volcengine", {})
+        
+        api_key = kwargs.get('api_key') or ve_config.get('api_key')
+        if not api_key:
+            raise ValueError("火山引擎生成器需要提供 api_key，请先在 config/model_config.yaml 中配置")
+        
+        base_url = kwargs.get('base_url') or ve_config.get('base_url', 'https://ark.cn-beijing.volces.com/api/v3')
+        timeout = kwargs.get('timeout') or ve_config.get('timeout', 60)
+        
+        return VolcengineGenerator(
+            api_key=api_key,
+            model_name=kwargs.get('model_name', ve_config.get('model', 'doubao-pro-4k')),
+            base_url=base_url,
+            rag_mode=rag_mode,
+            timeout=timeout
+        )
+    
     else:
-        raise ValueError(f"不支持的生成器类型: {generator_type}. 支持的类型有: 'mock', 'local', 'openai'")
+        raise ValueError(f"不支持的生成器类型: {generator_type}. 支持的类型有: 'mock', 'local', 'openai', 'volcengine'")
 
 
 class RAGSystem:

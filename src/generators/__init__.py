@@ -8,6 +8,7 @@ from .base import LLMGenerator, GenerationResult
 from .mock_generator import MockGenerator
 from .local_lm_studio import LocalLMStudioGenerator
 from .openai_generator import OpenAIGenerator
+from .volcengine_generator import VolcengineGenerator
 
 __all__ = [
     'LLMGenerator',
@@ -15,4 +16,5 @@ __all__ = [
     'MockGenerator',
     'LocalLMStudioGenerator',
     'OpenAIGenerator',
+    'VolcengineGenerator',
 ]

@@ -28,7 +28,8 @@ class LocalLMStudioGenerator(LLMGenerator):
     
     def __init__(self, base_url: str, 
                  model_name: str = "local-model",
-                 rag_mode: str = "flexible"):
+                 rag_mode: str = "flexible",
+                 timeout: int = 1200):
         """
         初始化本地LM Studio生成器
         
@@ -36,12 +37,14 @@ class LocalLMStudioGenerator(LLMGenerator):
             base_url: LM Studio API 地址，不包含 /api/v1/chat 后缀
             model_name: 模型名称
             rag_mode: RAG模式 ('strict'|'flexible')
+            timeout: 请求超时时间（秒），默认1200秒
         """
         super().__init__(model_name, rag_mode=rag_mode)
         if not base_url:
             raise ValueError("base_url 不能为空，必须由上层配置传入")
         self.base_url = base_url
         self.api_key = "not-needed"  # LM Studio不需要API密钥
+        self.timeout = timeout
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
                 max_tokens: int = 500) -> GenerationResult:
@@ -93,7 +96,7 @@ class LocalLMStudioGenerator(LLMGenerator):
                 api_url,
                 headers=headers,
                 json=data,
-                timeout=120  # 增加超时时间，因为RAG上下文可能较长
+                timeout=self.timeout  # 使用配置的超时时间
             )
             
             print(f"[调试] 响应状态码: {response.status_code}")
