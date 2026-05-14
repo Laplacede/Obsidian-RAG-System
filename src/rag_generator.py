@@ -61,57 +61,61 @@ def create_generator(generator_type: str, **kwargs) -> LLMGenerator:
         ValueError: 如果生成器类型不支持
     """
     rag_mode = kwargs.get('rag_mode', 'flexible')  # 默认灵活模式
+    config = _load_config()
+    llm_config = config.get("llm", {})
+    local_config = llm_config.get("local", {})
+    cloud_config = llm_config.get("cloud", {})
+    volcengine_config = llm_config.get("volcengine", {})
     
     if generator_type == "mock":
-        return MockGenerator(rag_mode=rag_mode)
+        return MockGenerator(rag_mode=rag_mode, default_max_tokens=kwargs.get('max_tokens'))
     
     elif generator_type == "local":
-        # 优先使用显式传参，其次回退到 config/model_config.yaml 中的本地配置
-        config = _load_config()
-        local_config = config.get("llm", {}).get("local", {})
-
         base_url = kwargs.get('base_url') or local_config.get('base_url')
         if not base_url:
             raise ValueError("本地生成器缺少 base_url，请先在 config/model_config.yaml 中配置")
         
         timeout = kwargs.get('timeout') or local_config.get('timeout', 1200)
+        max_tokens = kwargs.get('max_tokens') or local_config.get('max_tokens')
         
         return LocalLMStudioGenerator(
             base_url=base_url,
             model_name=kwargs.get('model_name', local_config.get('model', 'local-model')),
             rag_mode=rag_mode,
-            timeout=timeout
+            timeout=timeout,
+            default_max_tokens=max_tokens
         )
     
     elif generator_type == "openai":
-        api_key = kwargs.get('api_key')
+        api_key = kwargs.get('api_key') or cloud_config.get('api_key')
         if not api_key:
             raise ValueError("OpenAI生成器需要提供 api_key 参数")
         
+        max_tokens = kwargs.get('max_tokens') or cloud_config.get('max_tokens')
+        
         return OpenAIGenerator(
             api_key=api_key,
-            model_name=kwargs.get('model_name', 'gpt-3.5-turbo'),
-            rag_mode=rag_mode
+            model_name=kwargs.get('model_name', cloud_config.get('model', 'gpt-3.5-turbo')),
+            rag_mode=rag_mode,
+            default_max_tokens=max_tokens
         )
     
     elif generator_type == "volcengine":
-        # 优先使用显式传参，其次回退到 config/model_config.yaml 中的火山引擎配置
-        config = _load_config()
-        ve_config = config.get("llm", {}).get("volcengine", {})
-        
-        api_key = kwargs.get('api_key') or ve_config.get('api_key')
+        api_key = kwargs.get('api_key') or volcengine_config.get('api_key')
         if not api_key:
             raise ValueError("火山引擎生成器需要提供 api_key，请先在 config/model_config.yaml 中配置")
         
-        base_url = kwargs.get('base_url') or ve_config.get('base_url', 'https://ark.cn-beijing.volces.com/api/v3')
-        timeout = kwargs.get('timeout') or ve_config.get('timeout', 60)
+        base_url = kwargs.get('base_url') or volcengine_config.get('base_url', 'https://ark.cn-beijing.volces.com/api/v3')
+        timeout = kwargs.get('timeout') or volcengine_config.get('timeout', 60)
+        max_tokens = kwargs.get('max_tokens') or volcengine_config.get('max_tokens')
         
         return VolcengineGenerator(
             api_key=api_key,
-            model_name=kwargs.get('model_name', ve_config.get('model', 'doubao-pro-4k')),
+            model_name=kwargs.get('model_name', volcengine_config.get('model', 'doubao-pro-4k')),
             base_url=base_url,
             rag_mode=rag_mode,
-            timeout=timeout
+            timeout=timeout,
+            default_max_tokens=max_tokens
         )
     
     else:

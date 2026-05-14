@@ -13,7 +13,7 @@
             由 cli.py 或 rag_generator.py 读取后通过参数传入。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import LLMGenerator, GenerationResult
 
 
@@ -29,7 +29,8 @@ class LocalLMStudioGenerator(LLMGenerator):
     def __init__(self, base_url: str, 
                  model_name: str = "local-model",
                  rag_mode: str = "flexible",
-                 timeout: int = 1200):
+                 timeout: int = 1200,
+                 default_max_tokens: Optional[int] = None):
         """
         初始化本地LM Studio生成器
         
@@ -39,22 +40,23 @@ class LocalLMStudioGenerator(LLMGenerator):
             rag_mode: RAG模式 ('strict'|'flexible')
             timeout: 请求超时时间（秒），默认1200秒
         """
-        super().__init__(model_name, rag_mode=rag_mode)
+        super().__init__(model_name, rag_mode=rag_mode, default_max_tokens=default_max_tokens)
         if not base_url:
             raise ValueError("base_url 不能为空，必须由上层配置传入")
         self.base_url = base_url
         self.api_key = "not-needed"  # LM Studio不需要API密钥
         self.timeout = timeout
+        self.default_max_tokens = default_max_tokens
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
-                max_tokens: int = 500) -> GenerationResult:
+            max_tokens: Optional[int] = None) -> GenerationResult:
         """
         使用LM Studio生成答案
         
         Args:
             query: 查询文本
             context: 检索到的上下文
-            max_tokens: 最大生成token数
+            max_tokens: 最大生成token数，None 表示使用生成器默认值
             
         Returns:
             生成结果
@@ -74,6 +76,7 @@ class LocalLMStudioGenerator(LLMGenerator):
             
             # 创建提示词
             prompt = self.create_prompt(query, formatted_context)
+            effective_max_tokens = self.default_max_tokens if max_tokens is None else max_tokens
             
             # 准备 API 请求 - LM Studio 旧接口格式
             headers = {
@@ -87,10 +90,18 @@ class LocalLMStudioGenerator(LLMGenerator):
                 "system_prompt": "你是一个基于个人知识库的助手，根据提供的上下文回答问题。请确保答案准确、完整，并引用相关文档。"
             }
             
+            # 只在指定了 max_tokens 时才添加到请求中
+            if effective_max_tokens is not None:
+                data["max_output_tokens"] = effective_max_tokens
+            
             # 发送请求到 LM Studio 的旧接口端点
             api_url = f"{self.base_url}/api/v1/chat"
             print(f"[调试] 发送请求到: {api_url}")
             print(f"[调试] 模型: {self.model_name}")
+            print(f"[调试] 提示词长度: {len(prompt)} 字符")
+            print(f"[调试] 提示词预览 (前500字符): {prompt[:500]}...")
+            if len(prompt) > 500:
+                print(f"[调试] 提示词预览 (后300字符): ...{prompt[-300:]}")
             
             response = session.post(
                 api_url,
@@ -98,6 +109,18 @@ class LocalLMStudioGenerator(LLMGenerator):
                 json=data,
                 timeout=self.timeout  # 使用配置的超时时间
             )
+
+            # 少数旧版本服务可能不认识长度字段，回退为不带长度限制的请求
+            if response.status_code == 400 and "unrecognized_key" in response.text and "max_output_tokens" in data:
+                fallback_data = dict(data)
+                fallback_data.pop("max_output_tokens", None)
+                print("[调试] 服务端不接受 max_output_tokens，改为不传长度字段重试")
+                response = session.post(
+                    api_url,
+                    headers=headers,
+                    json=fallback_data,
+                    timeout=self.timeout
+                )
             
             print(f"[调试] 响应状态码: {response.status_code}")
             

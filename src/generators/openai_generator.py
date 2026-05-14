@@ -13,7 +13,7 @@ OpenAI生成器
             由 cli.py 或 rag_generator.py 读取后通过参数传入。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import LLMGenerator, GenerationResult
 
 
@@ -24,7 +24,7 @@ class OpenAIGenerator(LLMGenerator):
     """
     
     def __init__(self, api_key: str, model_name: str = "gpt-3.5-turbo", 
-                 rag_mode: str = "flexible"):
+                 rag_mode: str = "flexible", default_max_tokens: Optional[int] = None):
         """
         初始化OpenAI生成器
         
@@ -33,18 +33,18 @@ class OpenAIGenerator(LLMGenerator):
             model_name: 模型名称 (默认: gpt-3.5-turbo)
             rag_mode: RAG模式 ('strict'|'flexible')
         """
-        super().__init__(model_name, rag_mode=rag_mode)
+        super().__init__(model_name, rag_mode=rag_mode, default_max_tokens=default_max_tokens)
         self.api_key = api_key
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
-                max_tokens: int = 500) -> GenerationResult:
+            max_tokens: Optional[int] = None) -> GenerationResult:
         """
         使用OpenAI生成答案
         
         Args:
             query: 查询文本
             context: 检索到的上下文
-            max_tokens: 最大生成token数
+            max_tokens: 最大生成token数，None 表示使用生成器默认值
             
         Returns:
             生成结果
@@ -60,20 +60,27 @@ class OpenAIGenerator(LLMGenerator):
             
             # 创建提示词
             prompt = self.create_prompt(query, formatted_context)
+            effective_max_tokens = self.default_max_tokens if max_tokens is None else max_tokens
             
             # 初始化OpenAI客户端
             client = OpenAI(api_key=self.api_key)
             
             # 发送请求
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=[
+            # 构建请求参数
+            create_params = {
+                "model": self.model_name,
+                "messages": [
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=max_tokens,
-                temperature=0.3,
-                top_p=0.9
-            )
+                "temperature": 0.3,
+                "top_p": 0.9
+            }
+            
+            # 只在指定了 max_tokens 时才添加到请求中
+            if effective_max_tokens is not None:
+                create_params["max_tokens"] = effective_max_tokens
+            
+            response = self.client.chat.completions.create(**create_params)
             
             answer = response.choices[0].message.content
             

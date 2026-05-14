@@ -52,6 +52,8 @@ class ObsidianRAGCLI:
         
         # 加载历史记录
         self.load_history()
+        # 记录当前生成器的 max_tokens 配置（None 表示不限制）
+        self.current_max_tokens: Optional[int] = None
     
     def load_model_config(self, config_path: Optional[str]) -> dict:
         """
@@ -162,12 +164,15 @@ class ObsidianRAGCLI:
                     raise ValueError("本地模型配置缺少 base_url，请在 config/model_config.yaml 中设置")
                 
                 print(f"使用本地LM Studio: {base_url}, 模型: {model_name}, 超时: {timeout}秒")
+                local_max_tokens = local_config.get("max_tokens", None)
+                self.current_max_tokens = local_max_tokens
                 self.generator = create_generator(
                     "local",
                     base_url=base_url,
                     model_name=model_name,
                     rag_mode=self.config["rag_mode"],
-                    timeout=timeout
+                    timeout=timeout,
+                    max_tokens=local_max_tokens
                 )
             elif self.config["model_type"] == "volcengine":
                 # 使用火山引擎配置
@@ -181,13 +186,16 @@ class ObsidianRAGCLI:
                 timeout = ve_config.get("timeout", 60)
                 
                 print(f"使用火山引擎: {base_url}, 模型: {model_name}, 超时: {timeout}秒")
+                ve_max_tokens = ve_config.get("max_tokens", None)
+                self.current_max_tokens = ve_max_tokens
                 self.generator = create_generator(
                     "volcengine",
                     api_key=api_key,
                     model_name=model_name,
                     base_url=base_url,
                     rag_mode=self.config["rag_mode"],
-                    timeout=timeout
+                    timeout=timeout,
+                    max_tokens=ve_max_tokens
                 )
             elif self.config["model_type"] == "openai":
                 # 使用OpenAI API配置
@@ -198,11 +206,14 @@ class ObsidianRAGCLI:
                     self.generator = create_generator("mock", rag_mode=self.config["rag_mode"])
                 else:
                     model_name = openai_config.get("model", "gpt-3.5-turbo")
+                    openai_max_tokens = openai_config.get("max_tokens", None)
+                    self.current_max_tokens = openai_max_tokens
                     self.generator = create_generator(
                         "openai",
                         api_key=api_key,
                         model_name=model_name,
-                        rag_mode=self.config["rag_mode"]
+                        rag_mode=self.config["rag_mode"],
+                        max_tokens=openai_max_tokens
                     )
             else:  # mock模式
                 self.generator = create_generator("mock", rag_mode=self.config["rag_mode"])
@@ -464,6 +475,9 @@ class ObsidianRAGCLI:
         
         print(f"\n查询: {query}")
         print("-" * 60)
+        # 显示本次请求使用的 max_tokens 设置（None 表示不限制）
+        display_mt = self.current_max_tokens if self.current_max_tokens is not None else "None (unlimited)"
+        print(f"本次请求 max_tokens: {display_mt}")
         
         try:
             # 执行RAG查询

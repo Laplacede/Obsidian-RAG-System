@@ -10,7 +10,7 @@
 - 依赖文件：继承自 base.py 的 LLMGenerator。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import LLMGenerator, GenerationResult
 
 
@@ -20,12 +20,13 @@ class MockGenerator(LLMGenerator):
     生成虚拟的回答，不实际调用任何LLM。
     """
     
-    def __init__(self, model_name: str = "mock-model", rag_mode: str = "flexible"):
+    def __init__(self, model_name: str = "mock-model", rag_mode: str = "flexible", 
+                 default_max_tokens: Optional[int] = None):
         """初始化模拟生成器"""
-        super().__init__(model_name, rag_mode=rag_mode)
+        super().__init__(model_name, rag_mode=rag_mode, default_max_tokens=default_max_tokens)
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
-                max_tokens: int = 500) -> GenerationResult:
+                max_tokens: Optional[int] = None) -> GenerationResult:
         """
         生成模拟答案（用于测试）
         

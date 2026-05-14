@@ -10,7 +10,7 @@ LLM生成器基类
 - 依赖文件：所有生成器实现都继承这个基类。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import re
 
@@ -39,7 +39,7 @@ class LLMGenerator:
     """
     
     def __init__(self, model_name: str = "default", context_window: int = 4096, 
-                 rag_mode: str = "flexible"):
+                 rag_mode: str = "flexible", default_max_tokens: Optional[int] = None):
         """
         初始化LLM生成器
         
@@ -49,20 +49,22 @@ class LLMGenerator:
             rag_mode: RAG模式 ('strict'|'flexible')
                 - strict: 仅基于知识库回答，信息不足时说明
                 - flexible: 优先使用知识库，不足时可补充先验知识
+            default_max_tokens: 默认最大生成长度
         """
         self.model_name = model_name
         self.context_window = context_window
         self.rag_mode = rag_mode
+        self.default_max_tokens = default_max_tokens
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
-                max_tokens: int = 500) -> GenerationResult:
+                max_tokens: Optional[int] = None) -> GenerationResult:
         """
         生成答案
         
         Args:
             query: 查询文本
             context: 检索到的上下文 (SearchResult转换后的字典列表)
-            max_tokens: 最大生成token数
+            max_tokens: 最大生成token数，None 表示使用生成器默认值
             
         Returns:
             生成结果
@@ -129,28 +131,27 @@ class LLMGenerator:
 
 请根据上下文提供详细的回答，并引用相关文档（如[文档1]、[文档2]等）："""
         else:  # flexible mode (default)
-            # 灵活模式：优先知识库，可补充先验知识
-            prompt = f"""你是一个智能助手，拥有两个知识来源：
+            # 灵活模式：优先知识库，必要时可以更充分地补充背景知识
+            prompt = f"""你是一个基于个人知识库的中文问答助手。
 
-【来源1】知识库文档（优先使用）：
+上下文文档（优先使用）：
 {context}
 
-【来源2】你的先验知识：在知识库信息不足时可以补充
-
-回答用户问题时，请遵循以下规则：
-1. 首先尽量使用知识库文档回答（这是最权威的来源）
-2. 如果知识库文档完整覆盖了问题，只基于文档回答
-3. 如果知识库文档信息不足，可以补充你的先验知识来完善答案
-4. 请明确标记答案中各部分的来源：
-   - [知识库] = 直接来自提供的文档
-   - [补充] = 你的先验知识补充
-   - [混合] = 综合知识库和先验知识
-5. 使用中文回答
-6. 力求答案准确、完整、有用
+回答规则：
+1. 优先使用上下文文档回答；如果文档信息不足，请补充必要的背景知识、定义、关键概念、常见例子、对比和注意点。
+2. 不要输出你的推理过程、思考过程、分析过程或自我审查内容。
+3. 内容要尽量完整、具体、可读。
+4. 每个自然段末尾用来源标签标注：
+   - [知识库] = 仅来自文档
+   - [补充] = 仅来自通用知识补充
+   - [混合] = 文档与通用知识共同构成
+5. 如果引用了文档内容，请在句子末尾附上文档编号，如 [文档1]、[文档2]。
+6. 使用中文回答，表达要简洁、准确、可读。
+7. 如果可以补充，请优先补充“是什么、为什么、怎么用、例子、常见误区”。
 
 用户问题：{query}
 
-请提供详细的回答。如果使用了文档中的信息，请引用相关文档（如[文档1]、[文档2]等）："""
+LLM答案："""
         
         return prompt
     

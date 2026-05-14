@@ -12,7 +12,7 @@
 - 配置管理：隐私信息（API密钥等）应存储在 config/model_config.yaml 中。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import requests
 from .base import LLMGenerator, GenerationResult
@@ -26,7 +26,8 @@ class VolcengineGenerator(LLMGenerator):
     
     def __init__(self, api_key: str, model_name: str = "doubao-pro-4k",
                  base_url: str = "https://ark.cn-beijing.volces.com/api/v3",
-                 rag_mode: str = "flexible", timeout: int = 60):
+                 rag_mode: str = "flexible", timeout: int = 60,
+                 default_max_tokens: Optional[int] = None):
         """
         初始化火山引擎生成器
         
@@ -37,20 +38,21 @@ class VolcengineGenerator(LLMGenerator):
             rag_mode: RAG模式 ('strict'|'flexible')
             timeout: 请求超时时间（秒）
         """
-        super().__init__(model_name, rag_mode=rag_mode)
+        super().__init__(model_name, rag_mode=rag_mode, default_max_tokens=default_max_tokens)
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
+        self.default_max_tokens = default_max_tokens
     
     def generate(self, query: str, context: List[Dict[str, Any]], 
-                max_tokens: int = 500) -> GenerationResult:
+            max_tokens: Optional[int] = None) -> GenerationResult:
         """
         使用火山引擎生成答案
         
         Args:
             query: 查询文本
             context: 检索到的上下文
-            max_tokens: 最大生成token数
+            max_tokens: 最大生成token数，None 表示使用生成器默认值
             
         Returns:
             生成结果
@@ -64,6 +66,7 @@ class VolcengineGenerator(LLMGenerator):
             
             # 创建提示词
             prompt = self.create_prompt(query, formatted_context)
+            effective_max_tokens = self.default_max_tokens if max_tokens is None else max_tokens
             
             # 准备请求头
             headers = {
@@ -77,10 +80,13 @@ class VolcengineGenerator(LLMGenerator):
                 "messages": [
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": max_tokens,
                 "temperature": 0.3,
                 "top_p": 0.9
             }
+            
+            # 只在指定了 max_tokens 时才添加到请求中
+            if effective_max_tokens is not None:
+                data["max_tokens"] = effective_max_tokens
             
             # 发送请求
             api_url = f"{self.base_url}/chat/completions"
